@@ -18,6 +18,7 @@
 #       memory.db              ← episodic + semantic (FTS5)
 #       MEMORY.md              ← curated semantic facts
 #       USER.md                ← Honcho-style user model
+#       PEERS.md               ← peer-agent semantic model (AGENTS.md §6)
 #       skills/                ← agent-authored skills land here
 #       trajectories/          ← exported decision-cycle traces
 #
@@ -27,7 +28,7 @@
 #       hermes.toml → /app/hermes-config/hermes.toml
 #       mcp.json    → /app/hermes-config/mcp.json
 #       skills/     → /data/hermes/skills (volume-backed, merged with /app)
-#       memory.db, MEMORY.md, USER.md, trajectories → /data/hermes/...
+#       memory.db, MEMORY.md, USER.md, PEERS.md, trajectories → /data/hermes/...
 #
 # This split is the durability story:
 #   - Architecture lives in code (foundation = AGENTS.md + SOUL.md + seed skills).
@@ -108,6 +109,39 @@ EOF
   log "seeded $VOLUME_DIR/USER.md"
 fi
 
+if [[ ! -f "$VOLUME_DIR/PEERS.md" ]]; then
+  cat > "$VOLUME_DIR/PEERS.md" <<'EOF'
+# PEERS.md — Peer Agent Model
+
+Semantic memory (CoALA §4.1, §4.5) for other agents the system shares
+work with. Parallel to USER.md but for non-human collaborators. See
+AGENTS.md §6.
+
+Claims here are about specific peers: their identity, declared
+capabilities, observed behavior, trust level, and which channels they
+monitor. Updated by direct user instruction, by the `coala-reflection`
+skill, and by the `group-agent-coordination` skill when a cycle
+produces a durable fact about a peer.
+
+Registered peers in `hermes.toml [[peers.peer]]` are the *declaration*;
+this file is the *experience-grounded* model. They drift apart over time
+— that's expected. Reconcile during reflection.
+
+## Format
+```
+## <peer-id>
+- Declared capabilities: ...
+- Observed behavior: ...
+- Trust: untrusted | scoped | trusted
+- Channels: <ids of channels where this peer is active>
+- Notable episodes: <episode refs or dates>
+```
+
+_(empty — populated as the agent collaborates)_
+EOF
+  log "seeded $VOLUME_DIR/PEERS.md"
+fi
+
 # ----------------------------------------------------------------------------
 # 3. Seed bundled skills into volume (so they survive even if /app changes)
 # ----------------------------------------------------------------------------
@@ -119,7 +153,8 @@ fi
 # To force re-seeding from /app (overwriting volume copies), set
 # HERMES_FORCE_RESEED=1 in Railway env.
 SEED_SKILLS=(coala-decision-cycle coala-skill-induction coala-reflection
-             deploy-railway debug-incident write-quality-code)
+             deploy-railway debug-incident write-quality-code
+             group-agent-coordination github-projects-ops channel-aware-messaging)
 
 for skill in "${SEED_SKILLS[@]}"; do
   src="$CONFIG_DIR/skills/$skill"
@@ -151,6 +186,7 @@ ln -sfn "$CONFIG_DIR/mcp.json"    "$HERMES_DIR/mcp.json"
 # State files / dirs: symlink to volume (mutable, persistent).
 ln -sfn "$VOLUME_DIR/MEMORY.md"     "$HERMES_DIR/MEMORY.md"
 ln -sfn "$VOLUME_DIR/USER.md"       "$HERMES_DIR/USER.md"
+ln -sfn "$VOLUME_DIR/PEERS.md"      "$HERMES_DIR/PEERS.md"
 ln -sfn "$VOLUME_DIR/skills"        "$HERMES_DIR/skills"
 ln -sfn "$VOLUME_DIR/memory.db"     "$HERMES_DIR/memory.db" 2>/dev/null || true
 ln -sfn "$VOLUME_DIR/trajectories"  "$HERMES_DIR/trajectories"

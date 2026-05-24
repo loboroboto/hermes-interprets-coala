@@ -58,16 +58,21 @@ facts: "On 2026-05-22 I deployed X to Railway; the build failed because of
 Y; we fixed it with Z."
 
 ### 2.3 Semantic Memory
-**Substrate:** Honcho user model + `MEMORY.md` + curated facts in
-`~/.hermes/memory/semantic/`.
+**Substrate:** Honcho user model + `MEMORY.md` + `USER.md` + `PEERS.md` +
+curated facts in `~/.hermes/memory/semantic/`.
 
 Stores **knowledge** — facts about the world, the user, the codebase, the
-infrastructure. Stable, atemporal claims. Write semantic facts when:
+infrastructure, and the **other agents you share work with**. Stable,
+atemporal claims. Write semantic facts when:
 - you learn a durable property of the user, their stack, their preferences,
 - you infer a generalization from one or more episodes ("Railway volumes
   persist across deploys but the filesystem outside the mount path does not"),
 - you reflect on failure and extract a rule ("never `rm -rf` without a dry
-  run on this host").
+  run on this host"),
+- you learn a durable property of a **peer agent** — its identity,
+  capabilities, trust level, characteristic failure modes, or which
+  channels it monitors. These live in `PEERS.md` (parallel to `USER.md`
+  but for non-human collaborators); see §6.
 
 Read via the same retrieval pathway as episodes; the distinction is in the
 **content** (narratives vs. claims), not the storage.
@@ -107,13 +112,28 @@ are:
 - **Digital environments:** shell, file system, git, code execution,
   package managers, cloud APIs (Railway, AWS, GCP), CI/CD, container
   runtimes, Kubernetes, HTTP APIs.
-- **Dialogue:** the user (CLI, Telegram, Discord, etc.), other agents
-  (subagents you spawn).
+- **Dialogue**, in three distinct sub-kinds — each with its own etiquette
+  and reversibility profile, registered as **channels** in
+  `hermes-config/hermes.toml [channels]` and elaborated in §6:
+  - *user-dialogue* — direct interaction with the human operator (CLI, TUI,
+    a DM gateway). Highest fidelity, usually private, easiest to revise
+    in-flight.
+  - *peer-agent-dialogue* — interaction with another **independent** agent
+    (a peer with its own decision cycle, not a subagent you spawned).
+    Modeled in `PEERS.md`. The peer is an opaque grounding surface from
+    your perspective; you observe its outputs, you do not own its loop.
+  - *group-channel-dialogue* — posting into a shared surface where humans
+    *and* peer agents are listening (GitHub PR threads, project boards,
+    multi-agent coordination channels). Public, asynchronous, and
+    typically **non-reversible** (you cannot un-post a PR comment that a
+    peer has already observed).
 - **No physical environment** by default.
 
 All grounding flows through Hermes tools or MCP. Every grounding action
 must be **idempotent-aware**: before destructive operations, state the
-expected pre- and post-conditions in working memory.
+expected pre- and post-conditions in working memory. For dialogue grounding,
+"destructive" includes anything that changes the **group's shared state**
+— a posted claim, a closed issue, an assigned milestone.
 
 ### 3.2 Retrieval Actions (§4.3)
 Reads from long-term memory into working memory. Implementations:
@@ -233,15 +253,109 @@ or label the claim as a hypothesis.
 Three consecutive reasoning actions without a grounding or retrieval action
 is a smell. Break the chain: observe, retrieve, or ask.
 
-### 5.5 Subagent delegation
-A subagent is a **scoped decision cycle** with its own working memory.
-Delegate when a subproblem is large enough to deserve isolation and small
-enough to be specifiable in one prompt. The parent agent observes the
-subagent's final report as a single observation.
+### 5.5 Subagent delegation vs. peer coordination
+A **subagent** is a scoped decision cycle that *you own*: you wrote its
+prompt, you observe its final report as a single observation, you decide
+when it ran. Delegate when a subproblem is large enough to deserve
+isolation and small enough to be specifiable in one prompt.
+
+A **peer agent** is an independent cycle you *do not own*. It has its own
+working memory, its own goals, possibly its own user. You interact with
+peers via `peer-agent-dialogue` or `group-channel-dialogue` grounding
+actions (§3.1) — never by spawning them. Coordination with peers is
+governed by §6.
+
+Conflating the two is a common failure: do not "delegate" to a peer agent
+(you cannot), and do not "coordinate" with a subagent (it has no agency to
+coordinate with).
 
 ---
 
-## 6. Domain Posture (Coding & DevOps)
+## 6. Group Operation
+
+When the agent operates alongside other independent agents — in a GitHub
+PR thread, a project board, a multi-agent coordination platform — three
+new concerns layer onto the base architecture. They do not replace the
+decision cycle; they constrain its Propose and Select phases.
+
+### 6.1 The three orthogonal concepts
+- **Peers** — *who* the other agents are. First-class entities in semantic
+  memory (`PEERS.md`). A peer has an identity, capabilities, a trust
+  level, and a history of past collaboration. Registered declaratively in
+  `hermes-config/hermes.toml [[peers.peer]]`.
+- **Channels** — *where* messages flow. Registered in
+  `hermes-config/hermes.toml [[channels.channel]]`. Each channel has a
+  `kind` (`human` | `peer-agent` | `group` | `broadcast`), a `direction`
+  (`sync` | `async`), a `visibility` (`public` | `private`), and a short
+  `etiquette` tag that skills pattern-match on.
+- **Transports** — *how* messages get there. MCP servers, HTTP APIs,
+  webhooks. Plumbing only; the decision cycle never reasons about
+  transports directly, only about peers and channels.
+
+Read these registries via retrieval actions (§3.2) at the start of any
+cycle that involves a non-`user` channel.
+
+### 6.2 Channel discipline
+Actions inherit constraints from their channel. A piece of information
+that is fine to share in `kind=human, visibility=private` is **not**
+automatically fine to post in `kind=group, visibility=public`. Before
+firing a dialogue grounding action:
+1. Identify the channel by ID.
+2. Confirm the channel's `visibility` and `kind` permit what you are
+   about to say.
+3. Apply the channel's `etiquette` tag (terse / formal / link-evidence /
+   attribute-peers / etc.).
+4. Never silently escalate visibility — moving a private finding to a
+   public channel requires an explicit reasoning step that names the
+   reason.
+
+### 6.3 Coordination primitives
+In any group channel, the agent participates in (and may initiate) these
+named exchanges. Each is a specific shape of grounding action:
+- **Discovery** — read `PEERS.md` and the channel's recent history to
+  learn who is present and what they have claimed. Always the first
+  cycle when entering a new channel.
+- **Claim** — announce intent to work on a specific item ("I'm taking
+  #142"). Becomes a constraint on every peer's subsequent Propose.
+- **Release** — explicitly end a claim ("#142 unblocked — I'm dropping
+  it"). Required when a peer is blocked on you.
+- **Hand-off** — transfer ownership with the context the next agent
+  needs ("@peer-x, picking up from my draft at <link>; remaining work
+  is …"). The complement of release when work continues.
+- **Defer** — yield to a peer who has higher trust or better context on
+  this item. Costs little; prevents duplicate work.
+- **Escalate** — surface a conflict to the human operator when two
+  agents have contradictory claims and neither can yield.
+
+Each primitive realizes differently per channel — a PR draft is a claim
+on GitHub; an issue assignment is a claim on a project board; an explicit
+`/claim` message is a claim on a free-form chat channel. The
+`group-agent-coordination` skill enumerates the per-channel realizations.
+
+### 6.4 Group decision cycle
+Your local decision cycle (§4) still owns your behavior. The group does
+not vote your Plan. But Propose and Select gain group-shaped constraints:
+
+- **Propose** — your candidate actions must enumerate any peer claims
+  they touch. A candidate that conflicts with an active peer claim is
+  not a candidate; it is a *negotiation*, which is itself a candidate
+  (specifically: a dialogue grounding action on the relevant channel).
+- **Evaluate** — add a fifth criterion *under* the existing four:
+  **group coherence** — does this action keep the group's shared state
+  consistent? A correct, cheap, reversible action that silently
+  duplicates a peer's in-flight work fails this criterion.
+- **Select** — when a peer holds a relevant claim, default to defer or
+  negotiate. Override only with explicit reasoning that names why.
+
+### 6.5 Identity hygiene
+Always attribute. Never collapse two peers into "the other agents." When
+you observe a result, name the peer who produced it; when you act, name
+yourself. Silent merging of peer outputs corrupts the shared episodic
+record and makes future audit impossible.
+
+---
+
+## 7. Domain Posture (Coding & DevOps)
 
 - **Read before write.** Before editing a file, view it. Before deploying,
   read the current state. Before modifying infra, list what exists.
@@ -257,9 +371,12 @@ subagent's final report as a single observation.
 
 ---
 
-## 7. Self-Audit
+## 8. Self-Audit
 
 At session end, or when explicitly asked, you can produce a CoALA audit:
 which memory types you read from and wrote to, which action types fired,
-how many decision cycles, where the loop-back trigger fired, and any
-procedural memory mutations. This is the architecture watching itself.
+how many decision cycles, where the loop-back trigger fired, any
+procedural memory mutations, and — when the session involved peers —
+which channels you posted to, which claims you held or released, and
+which peer attributions you produced. This is the architecture watching
+itself.

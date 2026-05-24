@@ -9,6 +9,13 @@
     "Secrets come from Railway environment variables — never hard-code tokens",
     "here. The ${VAR} syntax is expanded at load time.",
     "",
+    "Relationship to hermes.toml [peers] and [channels] (see AGENTS.md §6):",
+    "  - mcp.json entries are TRANSPORTS (the 'HOW').",
+    "  - [peers] entries reference a transport key via transport_ref.",
+    "  - [channels] entries also reference a transport key via transport_ref.",
+    "Adding a new platform usually means: an MCP entry here + 1+ peers +",
+    "1+ channels in hermes.toml. No code changes required.",
+    "",
     "Servers below are commented out by default; uncomment and configure the",
     "ones you actually need. Each comes with a note on which CoALA grounding",
     "category it lives in."
@@ -16,9 +23,7 @@
 
   "mcpServers": {
 
-    "_github_example": {
-      "_note": "GROUNDING — digital. Repo browsing, issue/PR ops, code search.",
-      "_disabled": true,
+    "github": {
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-github"],
       "env": {
@@ -76,8 +81,40 @@
         "SENTRY_AUTH_TOKEN": "${SENTRY_AUTH_TOKEN}",
         "SENTRY_ORG": "${SENTRY_ORG}"
       }
+    },
+
+    "_paperclip_ai_example": {
+      "_note": "GROUNDING — peer-agent dialogue. Group-agent coordination platform. Replace command/args with the real paperclip_ai MCP server invocation when wiring. Pairs with [[peers.peer]] id='paperclip-ai' and [[channels.channel]] id='paperclip-coord' in hermes.toml.",
+      "_disabled": true,
+      "command": "REPLACE_ME",
+      "args": ["REPLACE_ME"],
+      "env": {
+        "PAPERCLIP_AI_TOKEN": "${PAPERCLIP_AI_TOKEN}"
+      }
+    },
+
+    "_multica_example": {
+      "_note": "GROUNDING — peer-agent dialogue. Multi-agent swarm platform. Replace command/args with the real multica MCP server invocation when wiring. Pairs with [[peers.peer]] id='multica-swarm' and [[channels.channel]] id='multica-broadcast' in hermes.toml.",
+      "_disabled": true,
+      "command": "REPLACE_ME",
+      "args": ["REPLACE_ME"],
+      "env": {
+        "MULTICA_TOKEN": "${MULTICA_TOKEN}"
+      }
+    },
+
+    "_generic_agent_bridge_example": {
+      "_note": "GROUNDING — peer-agent dialogue. Protocol-agnostic shape: any group-agent platform that exposes (a) capability discovery, (b) message send, (c) inbound webhook. Use as a template when the platform is NOT MCP-shaped — point at a thin adapter you write yourself that translates MCP calls to the platform's native protocol (HTTP, AT Protocol, ActivityPub, custom).",
+      "_disabled": true,
+      "command": "node",
+      "args": ["/app/adapters/generic-agent-bridge.js"],
+      "env": {
+        "PEER_PLATFORM_URL": "${PEER_PLATFORM_URL}",
+        "PEER_PLATFORM_TOKEN": "${PEER_PLATFORM_TOKEN}",
+        "PEER_AGENT_ID": "${PEER_AGENT_ID}"
+      }
     }
   },
 
-  "_disabled_servers_are_ignored": "Hermes ignores entries whose key starts with underscore. Rename _github_example → github (and drop _disabled / _note) to activate."
+  "_disabled_servers_are_ignored": "Hermes ignores entries whose key starts with underscore. Rename _foo_example → foo (and drop _disabled / _note) to activate."
 }

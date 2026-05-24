@@ -28,17 +28,20 @@ same architecture on every boot.
 │   └── bootstrap.sh                ← idempotent setup on every container boot
 │
 └── hermes-config/                  ← THE ARCHITECTURE (git-tracked, durable)
-    ├── AGENTS.md                   ← CoALA system prompt (memory, actions, decision cycle)
+    ├── AGENTS.md                   ← CoALA system prompt (memory, actions, decision cycle, group ops)
     ├── SOUL.md                     ← personality / voice
-    ├── hermes.toml                 ← provider, model, paths, toolsets
-    ├── mcp.json                    ← MCP grounding-action surfaces (commented examples)
+    ├── hermes.toml                 ← provider, model, paths, toolsets, [peers], [channels]
+    ├── mcp.json                    ← MCP grounding-action surfaces (github live; others commented)
     └── skills/                     ← seed procedural memory
-        ├── coala-decision-cycle/   ← META — the loop, made explicit
-        ├── coala-skill-induction/  ← META — how to write a skill (procedural learning)
-        ├── coala-reflection/       ← META — episodic → semantic promotion
-        ├── deploy-railway/         ← DOMAIN — Railway deploys
-        ├── debug-incident/         ← DOMAIN — production incident triage
-        └── write-quality-code/     ← DOMAIN — coding defaults
+        ├── coala-decision-cycle/      ← META — the loop, made explicit
+        ├── coala-skill-induction/     ← META — how to write a skill (procedural learning)
+        ├── coala-reflection/          ← META — episodic → semantic promotion
+        ├── group-agent-coordination/  ← META — peer claims, hand-offs, conflict resolution
+        ├── channel-aware-messaging/   ← META — pick the right channel; respect etiquette
+        ├── deploy-railway/            ← DOMAIN — Railway deploys
+        ├── debug-incident/            ← DOMAIN — production incident triage
+        ├── github-projects-ops/       ← DOMAIN — issues, PRs, projects, milestones
+        └── write-quality-code/        ← DOMAIN — coding defaults
 ```
 
 ---
@@ -60,6 +63,8 @@ a specific Hermes mechanism (right).
 | **Reasoning actions** (§4.4)               | LLM calls scaffolded by AGENTS.md             | runtime                                        |
 | **Learning actions** (§4.5)                | Memory writes + `skill_manage` for skill author/patch | runtime, persists to `/data`            |
 | **Decision cycle** (§4.6 propose/eval/select) | Encoded in `AGENTS.md` §4 + `coala-decision-cycle` skill | both prompt-level and skill-level     |
+| **Multi-agent grounding** (§4.2 dialogue, other agents) | Peer registry + channel registry + MCP transports + peer semantic model | `hermes.toml [peers]` / `[channels]` + `mcp.json` + `/data/hermes/PEERS.md` |
+| **Group decision cycle** (§4.6 in groups)  | Local cycle with group-coherence criterion + coordination primitives | `AGENTS.md` §6 + `group-agent-coordination` skill |
 
 The agent itself can produce a CoALA self-audit when asked — it knows its
 own schema.
@@ -76,24 +81,68 @@ The foundation is **declarative and re-applyable**. A fresh Railway deploy:
 3. Runs `scripts/bootstrap.sh` (the ENTRYPOINT), which:
    - Verifies `/app/hermes-config/` is complete.
    - Creates `/data/hermes/` subdirectories if missing.
-   - Seeds `MEMORY.md` and `USER.md` if missing (idempotent — won't clobber).
+   - Seeds `MEMORY.md`, `USER.md`, and `PEERS.md` if missing (idempotent —
+     won't clobber).
    - Copies seed skills into `/data/hermes/skills/` if missing (so agent
      patches to seed skills stick; set `HERMES_FORCE_RESEED=1` to force).
    - Symlinks `~/.hermes/AGENTS.md`, `SOUL.md`, `hermes.toml`, `mcp.json`
      to the git-tracked `/app/` versions — **architecture is always fresh
      from the repo**.
-   - Symlinks `~/.hermes/MEMORY.md`, `USER.md`, `skills/`, `memory.db`,
-     `trajectories/` to the volume — **state persists across deploys**.
+   - Symlinks `~/.hermes/MEMORY.md`, `USER.md`, `PEERS.md`, `skills/`,
+     `memory.db`, `trajectories/` to the volume — **state persists across
+     deploys**.
 4. Execs the CMD (`hermes serve`).
 
 **What's on the volume (mutable, persistent):**
-`memory.db`, `MEMORY.md`, `USER.md`, agent-authored skills, trajectories.
+`memory.db`, `MEMORY.md`, `USER.md`, `PEERS.md`, agent-authored skills,
+trajectories.
 
 **What's in git (immutable, declarative):**
-the system prompt, SOUL.md, hermes.toml, mcp.json, the seed skill set.
+the system prompt, SOUL.md, hermes.toml (including peer + channel
+registries), mcp.json, the seed skill set.
 
 You can wipe and redeploy Railway, lose nothing about who the agent is, and
 keep everything about what it's learned.
+
+---
+
+## Group Operation
+
+The agent is built to operate alongside other independent agents — GitHub
+review bots, paperclip_ai-style coordinators, multica swarms, anything that
+speaks via MCP or a custom adapter. The architecture (`AGENTS.md` §6) treats
+this as three orthogonal concerns:
+
+| Concept    | What it is                            | Where it lives                                              |
+|------------|---------------------------------------|-------------------------------------------------------------|
+| **Peers**  | *Who* the other agents are            | `hermes-config/hermes.toml [[peers.peer]]` + `/data/hermes/PEERS.md` (experience-grounded model) |
+| **Channels** | *Where* messages flow               | `hermes-config/hermes.toml [[channels.channel]]` (kind / direction / visibility / etiquette) |
+| **Transports** | *How* messages get there          | `hermes-config/mcp.json` (MCP servers; the only realization that requires code) |
+
+A peer can be reachable through 0..N channels via 1..N transports. The agent
+reasons over peers + channels at the cognitive layer; transports stay
+invisible to the decision cycle.
+
+### Adding a new group-agent platform
+
+Wiring a new platform (e.g., activating `paperclip_ai`) is a three-edit
+operation, no code changes:
+
+1. **Transport** — in `mcp.json`, rename `_paperclip_ai_example` → `paperclip_ai`, drop `_disabled` / `_note`, fill in real `command` / `args` / `env`.
+2. **Peer(s)** — in `hermes.toml`, uncomment the `[[peers.peer]]` block for paperclip-ai (or add new ones for each agent identity you collaborate with on that platform), set `transport_ref = "paperclip_ai"`.
+3. **Channel(s)** — in `hermes.toml`, uncomment / add `[[channels.channel]]` entries with `transport_ref = "paperclip_ai"` and appropriate `kind` / `visibility` / `etiquette`.
+
+Commit, redeploy. The `group-agent-coordination` and `channel-aware-messaging` skills auto-cover the new surface; no per-platform skill required unless the platform has domain-specific operations (e.g., `github-projects-ops` exists because GitHub has issues / projects / milestones as distinct entities, not because GitHub is special).
+
+### Live by default
+
+- **GitHub** (`github` MCP) — `github-issue`, `github-pr-comments`, and `github-project-events` channels are pre-wired. Set `GITHUB_TOKEN` to activate.
+
+### Stubbed (uncomment to wire)
+
+- **paperclip_ai** — group-agent coordination platform.
+- **multica** — multi-agent swarm.
+- **generic agent bridge** — protocol-agnostic shape for platforms that aren't MCP-native.
 
 ---
 
@@ -122,23 +171,33 @@ In the Railway dashboard:
 | `NOUS_API_KEY`            | Yes¹      | LLM provider (Nous Portal)                 |
 | `OPENROUTER_API_KEY`      | Yes¹      | Alternative provider                       |
 | `OPENAI_API_KEY`          | Yes¹      | Alternative provider                       |
-| `GITHUB_TOKEN`            | Optional  | GitHub MCP                                 |
+| `GITHUB_TOKEN`            | Optional² | GitHub MCP — live by default; required for the `github-*` channels and the `github-projects-ops` skill |
 | `RAILWAY_TOKEN`           | Optional  | Railway MCP / programmatic Railway access  |
 | `TELEGRAM_BOT_TOKEN`      | Optional  | Telegram gateway                           |
 | `DISCORD_BOT_TOKEN`       | Optional  | Discord gateway                            |
 | `SLACK_BOT_TOKEN`         | Optional  | Slack gateway                              |
 | `SENTRY_AUTH_TOKEN`       | Optional  | Sentry MCP (for `debug-incident` skill)    |
+| `PAPERCLIP_AI_TOKEN`      | Optional  | paperclip_ai peer-agent platform (stub — uncomment in `mcp.json`) |
+| `MULTICA_TOKEN`           | Optional  | multica peer-agent swarm (stub — uncomment in `mcp.json`)         |
 | `HERMES_FORCE_RESEED`     | Optional  | Set to `1` to overwrite agent-patched seed skills on next boot |
 
 ¹ At least one provider key is required; pick the one matching `provider.name`
 in `hermes.toml`.
 
+² Without `GITHUB_TOKEN`, the GitHub MCP errors at call-time but doesn't
+crash the agent — the `github-*` channels simply become unreachable and
+the agent will say so on attempted use.
+
 ### 4. Activate any MCP servers you want
 
-Edit `hermes-config/mcp.json`. Examples for GitHub, Postgres, Sentry, Brave
-Search, and a Railway MCP are commented out with `_disabled` markers.
-Rename `_github_example` → `github` (and drop `_disabled` / `_note`) to
-activate. Commit, redeploy.
+Edit `hermes-config/mcp.json`. The `github` entry is **live by default**
+(set `GITHUB_TOKEN` to use it). Other entries — Postgres, Sentry, Brave
+Search, Railway, paperclip_ai, multica, and a generic agent-bridge
+template — are commented out with `_disabled` markers. Rename
+`_foo_example` → `foo` (and drop `_disabled` / `_note`) to activate. For
+peer-agent platforms, also uncomment the matching `[[peers.peer]]` and
+`[[channels.channel]]` blocks in `hermes-config/hermes.toml` — see
+[Group Operation](#group-operation). Commit, redeploy.
 
 ### 5. Talk to it
 
@@ -163,6 +222,7 @@ Because the architecture is git-tracked, all changes are PR-reviewable.
 | Which model, which provider                 | `hermes-config/hermes.toml` `[model]` / `[provider]` |
 | Which tools are enabled                     | `hermes-config/hermes.toml` `[tools]`          |
 | External grounding surfaces (APIs, services) | `hermes-config/mcp.json`                      |
+| Group-agent peers and channels              | `hermes-config/hermes.toml` `[peers]` / `[channels]` (see [Group Operation](#group-operation)) |
 | Seed procedural knowledge                   | `hermes-config/skills/<name>/SKILL.md` (add/edit) |
 | Where state persists                        | `hermes-config/hermes.toml` paths + `bootstrap.sh` symlinks |
 
@@ -182,6 +242,18 @@ A well-aligned agent will reproduce §2 and §4 of `AGENTS.md` in its own
 words, with CoALA section references. If it can't, the system prompt isn't
 loading — check that `~/.hermes/AGENTS.md` symlinks correctly to
 `/app/hermes-config/AGENTS.md`.
+
+And for group-operation alignment:
+
+> You're about to post a comment on a GitHub PR where another agent has
+> a draft open on the same file. Walk me through your decision cycle.
+> Name the channel, the peer, the coordination primitive, and which
+> AGENTS.md section governs the call.
+
+A well-aligned agent will name the `github-pr-comments` channel
+(`kind=group`, `visibility=public`), identify the peer from `PEERS.md`,
+recognize the draft as a peer claim, choose between *defer* and
+*negotiate* as the coordination primitive, and cite AGENTS.md §6.3.
 
 ---
 

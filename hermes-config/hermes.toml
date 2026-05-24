@@ -59,9 +59,13 @@ progressive_disclosure = true
 # Files always loaded into working memory at session start.
 agents_md = "/app/hermes-config/AGENTS.md"
 soul_md = "/app/hermes-config/SOUL.md"
-# MEMORY.md and USER.md live on the volume — they accumulate.
+# MEMORY.md, USER.md, PEERS.md live on the volume — they accumulate.
 memory_md = "/data/hermes/MEMORY.md"
 user_md = "/data/hermes/USER.md"
+# PEERS.md is the semantic model of other agents the agent shares work
+# with (see AGENTS.md §6). Loaded so the agent always knows who else is
+# in the playing field.
+peers_md = "/data/hermes/PEERS.md"
 
 [tools]
 # 70+ built-in tools — toolsets enabled for this agent's domain.
@@ -95,9 +99,131 @@ require_approval_for = [
 # MCP server configuration is in mcp.json (loaded separately, hot-reloadable).
 config_path = "/app/hermes-config/mcp.json"
 
+# ============================================================================
+# Group-agent operation — see AGENTS.md §6.
+#
+# Three orthogonal concepts:
+#
+#   [peers]       WHO is in the group (semantic registry).
+#   [channels]    WHERE messages flow (channel registry with kind/etiquette).
+#   [mcp]/...     HOW messages get there (transport plumbing; above).
+#
+# A peer can be reachable through 0..N channels via 1..N transports. The
+# agent reasons over peers + channels at the cognitive layer; transports
+# are invisible to the decision cycle.
+# ============================================================================
+
+[peers]
+# Pointer to the agent's semantic model of known peers.
+peers_md = "/data/hermes/PEERS.md"
+# Each [[peers.peer]] entry registers an agent the system can collaborate
+# with. Untrusted peers can still appear here — `trust` gates how seriously
+# the agent weights their proposals, not whether it sees them.
+#
+# transport ∈ {mcp, http, webhook, shared-doc, none}
+#   - mcp:        speak via an entry in mcp.json (set transport_ref to the key)
+#   - http:       direct HTTP API (transport_ref = config key for endpoint/creds)
+#   - webhook:    inbound-only; the peer posts to us
+#   - shared-doc: no direct channel — coordination via a shared surface
+#                 (e.g. a GitHub project board)
+#   - none:       known to exist but currently unreachable (stub)
+# trust    ∈ {untrusted, scoped, trusted}
+
+# --- Example stubs. Uncomment + edit to register real peers. ---
+
+# [[peers.peer]]
+# id = "github-review-bot"
+# display_name = "GitHub Review Bot"
+# transport = "shared-doc"
+# transport_ref = "github"          # the mcp.json key, even though kind=shared-doc
+# capabilities = ["code-review", "ci-status"]
+# trust = "scoped"
+# notes = "Posts review comments on PRs. Read-only collaborator from our POV."
+
+# [[peers.peer]]
+# id = "paperclip-ai"
+# display_name = "paperclip_ai coordinator"
+# transport = "mcp"
+# transport_ref = "paperclip_ai"    # match mcp.json key
+# capabilities = ["task-routing", "agent-discovery"]
+# trust = "scoped"
+# notes = "Group-agent coordination platform. Stub — fill in mcp.json first."
+
+# [[peers.peer]]
+# id = "multica-swarm"
+# display_name = "multica peer swarm"
+# transport = "mcp"
+# transport_ref = "multica"
+# capabilities = ["parallel-execution", "consensus"]
+# trust = "scoped"
+# notes = "Multi-agent swarm. Stub."
+
+[channels]
+# Pointer to a human-readable channel registry the agent can read for
+# free-form context (intended audience, recent norms, etc.). Optional.
+registry_md = "/data/hermes/CHANNELS.md"
+
+# Each [[channels.channel]] entry registers a surface the agent can
+# observe or post to. Distinct from [messaging.*] below — channels are
+# the cognitive abstraction the agent reasons over; messaging gateways
+# are runtime plumbing for human-facing DM bots.
+#
+# kind       ∈ {human, peer-agent, group, broadcast}
+# direction  ∈ {sync, async}
+# visibility ∈ {public, private}
+
+# --- Live: GitHub channels (transport = mcp.json:github) ---
+
+[[channels.channel]]
+id = "github-issue"
+kind = "group"
+direction = "async"
+visibility = "public"
+transport_ref = "github"
+etiquette = "link-evidence,attribute-peers,no-chatter-on-closed"
+
+[[channels.channel]]
+id = "github-pr-comments"
+kind = "group"
+direction = "async"
+visibility = "public"
+transport_ref = "github"
+etiquette = "one-substantive-comment,never-approve-own,link-line"
+
+[[channels.channel]]
+id = "github-project-events"
+kind = "broadcast"
+direction = "async"
+visibility = "public"
+transport_ref = "github"
+etiquette = "state-change-only,no-narration"
+
+# --- Stubs: uncomment when wiring real transports ---
+
+# [[channels.channel]]
+# id = "paperclip-coord"
+# kind = "peer-agent"
+# direction = "sync"
+# visibility = "private"
+# transport_ref = "paperclip_ai"
+# etiquette = "terse,claim-on-entry"
+
+# [[channels.channel]]
+# id = "multica-broadcast"
+# kind = "broadcast"
+# direction = "async"
+# visibility = "public"
+# transport_ref = "multica"
+# etiquette = "structured,one-decision-per-message"
+
 [messaging]
-# Messaging gateways — set the ones you actually use. Tokens come from
-# Railway env vars.
+# Runtime gateway plumbing for human-facing DM bots. Distinct from
+# [channels] above: messaging gateways are *how Hermes accepts inbound
+# messages*; channels are *what the agent reasons over* when composing
+# outbound messages. They can coexist (a Telegram DM is also a channel
+# with kind=human, visibility=private), but they're configured separately.
+#
+# Tokens come from Railway env vars.
 [messaging.telegram]
 enabled = false
 token_env = "TELEGRAM_BOT_TOKEN"
