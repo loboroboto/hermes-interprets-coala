@@ -58,9 +58,16 @@ ARG HERMES_ADMIN_REF=935ead16bcf9905b06637058dd68fe3137775e8c
 # background and forwards SIGTERM/SIGINT to our entrypoint so Railway's
 # stop signal still triggers our graceful shutdown.
 #
-# Node.js is required only at build time to compile the Hermes ui-tui
-# bundle. We strip the source + apt lists afterwards to keep the image
-# lean.
+# The apt + tooling install is split into three layers below — same final
+# image, but BuildKit can checkpoint between them. Earlier attempts that
+# chained apt-base + nodesource + nodejs + railway-CLI into one compound
+# RUN were silently killed by Railway's BuildKit worker mid-step with no
+# error in the log (deploys 511106c3 + 5d1bcff2). Splitting bounds peak
+# per-layer memory and turns any future failure into a diagnostic signal
+# (we'll see which specific layer failed instead of "the big RUN died").
+
+# Layer 1: base apt packages. Kept small and self-contained so BuildKit
+# can checkpoint cleanly before the heavier node + railway steps.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         tini \
@@ -70,10 +77,21 @@ RUN apt-get update && \
         sqlite3 \
         jq \
         openssh-client && \
-    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
-    apt-get install -y --no-install-recommends nodejs && \
-    curl -fsSL https://railway.app/install.sh | sh && \
     rm -rf /var/lib/apt/lists/*
+
+# Layer 2: Node.js 22 via nodesource. The setup script pulls its own
+# gnupg / apt-transport-https deps and adds the nodesource repo; running
+# it in its own layer (instead of chained with the base apt install
+# above) isolates its memory footprint and makes failures here visible.
+# Required only at build time for the hermes ui-tui and web bundles.
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+# Layer 3: Railway CLI. Used at runtime by the deploy-railway skill and
+# by the agent for Railway MCP / CLI grounding (RAILWAY_TOKEN). Tiny
+# install — its own layer purely for diagnostic clarity if it ever breaks.
+RUN curl -fsSL https://railway.app/install.sh | sh
 
 # Install hermes-agent (provides the `hermes` CLI) at pinned ref. The [all]
 # extras in current hermes pull cron, cli, dev, pty, mcp, homeassistant,
