@@ -66,9 +66,18 @@ restartPolicyMaxRetries = 10
 #                               (Bearer = this token). No public domain / TCP
 #                               proxy needed — private networking only. Leave
 #                               unset to keep the runner off.
+#                               Fleet agents each get an isolated CoALA home at
+#                               /data/hermes/agents/<agentId> — set per agent via
+#                               Paperclip adapterConfig.env.HERMES_HOME. Each home
+#                               is seeded from git-tracked config lazily on first
+#                               /run and persisted on the volume (slice #11).
 #   RUNNER_HOST              — runner bind address; default "::" (Railway
 #                               private networking is IPv6). Rarely overridden.
 #   RUNNER_PORT             — runner port; default 8788.
+#   HERMES_CMD              — command the runner spawns per /run; defaults to the
+#                               bundled wrapper /app/hermes-fleet-entry.sh (seeds
+#                               + isolates the per-agent home, then execs hermes).
+#                               Only override to bypass per-agent isolation.
 #   HERMES_AUTH_JSON_BOOTSTRAP — JSON contents of a locally-generated
 #                               ~/.hermes/auth.json, written to the volume
 #                               on first boot. Use for OAuth-based providers

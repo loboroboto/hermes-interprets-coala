@@ -77,41 +77,18 @@ done
 log "config dir OK: $CONFIG_DIR"
 
 # ----------------------------------------------------------------------------
-# 2. Ensure volume dirs exist (Railway provides the mount; we create children)
+# 2. Seed the main hermes home (HERMES_HOME = the volume) + the fleet root
 # ----------------------------------------------------------------------------
-# The full set hermes expects to find under HERMES_HOME. Missing dirs can
-# cause opaque "no such file" errors deep in cron / session / log code paths
-# even though the user-facing feature isn't being exercised directly.
-mkdir -p "$VOLUME_DIR" \
-         "$VOLUME_DIR/skills" \
-         "$VOLUME_DIR/trajectories" \
-         "$VOLUME_DIR/memory" \
-         "$VOLUME_DIR/cron" \
-         "$VOLUME_DIR/sessions" \
-         "$VOLUME_DIR/logs" \
-         "$VOLUME_DIR/pairing" \
-         "$VOLUME_DIR/hooks" \
-         "$VOLUME_DIR/image_cache" \
-         "$VOLUME_DIR/audio_cache" \
-         "$VOLUME_DIR/workspace" \
-         "$VOLUME_DIR/plans" \
-         "$VOLUME_DIR/home"
+# All generic, idempotent home provisioning — the hermes subdir tree, .env,
+# config.yaml, MEMORY/USER/PEERS, seed skills, and the read-only architecture
+# symlinks — lives in the shared helper so the per-agent fleet wrapper
+# (hermes-fleet-entry.sh, #11) seeds homes EXACTLY the same way. Railway
+# provides the /data mount; the helper creates the children.
+/app/seed-hermes-home.sh "$HERMES_DIR"
 
-# Seed runtime state files the admin server (server.py) reads/writes. These
-# live on the volume so dashboard-driven edits persist across redeploys.
-# The admin server expects both to exist and barfs on missing files.
-#   .env          — operator-set secrets and runtime toggles (provider
-#                   keys, gateway tokens). hermes.toml's `*_env` indirection
-#                   means values landed here flow into the runtime without
-#                   touching git-tracked architecture.
-#   config.yaml   — hermes runtime config (mcp_servers etc., deep-merged
-#                   with user-managed sections on save). Seeded from the
-#                   bundled example if absent.
-touch "$VOLUME_DIR/.env"
-if [[ ! -f "$VOLUME_DIR/config.yaml" ]] && [[ -f /opt/hermes-agent/cli-config.yaml.example ]]; then
-  cp /opt/hermes-agent/cli-config.yaml.example "$VOLUME_DIR/config.yaml"
-  log "seeded $VOLUME_DIR/config.yaml from cli-config.yaml.example"
-fi
+# Fleet root: per-agent homes (/data/hermes/agents/<agentId>) are lazily seeded
+# under here on first /run by hermes-fleet-entry.sh (fleet epic #8, slice #11).
+mkdir -p /data/hermes/agents
 
 # Clear any stale gateway PID file left over from a previous container.
 # `hermes gateway` (spawned by the admin server) writes a pid file on
@@ -120,144 +97,29 @@ fi
 # every subsequent boot to exit with "PID file race lost". No hermes
 # process can be running this early (we're pre-exec in a fresh container),
 # so removing unconditionally is safe.
-rm -f "$VOLUME_DIR/gateway.pid"
+rm -f "$HERMES_DIR/gateway.pid"
 
 # Bootstrap OAuth tokens from env var. Needed for providers that auth
 # via OAuth device flow rather than a static API key (xAI Grok SuperGrok,
 # Gemini CLI, Qwen OAuth, Claude Code). Set HERMES_AUTH_JSON_BOOTSTRAP to
 # the contents of a locally-generated ~/.hermes/auth.json. Written only
 # once — subsequent token refreshes update the file in place on the
-# persistent volume.
-if [[ ! -f "$VOLUME_DIR/auth.json" ]] && [[ -n "${HERMES_AUTH_JSON_BOOTSTRAP:-}" ]]; then
-  printf '%s' "$HERMES_AUTH_JSON_BOOTSTRAP" > "$VOLUME_DIR/auth.json"
-  chmod 600 "$VOLUME_DIR/auth.json"
-  log "bootstrapped $VOLUME_DIR/auth.json from HERMES_AUTH_JSON_BOOTSTRAP"
-fi
-
-# Seed MEMORY.md and USER.md if absent (agent will append to them over time).
-if [[ ! -f "$VOLUME_DIR/MEMORY.md" ]]; then
-  cat > "$VOLUME_DIR/MEMORY.md" <<'EOF'
-# MEMORY.md — Curated Semantic Memory
-
-This file is the agent's hand-curated semantic memory (CoALA §4.1, §4.5).
-Stable facts about the user, infrastructure, and codebase, written as
-declarative sentences with sources. Updated by the `coala-reflection` skill
-and by direct user instruction.
-
-## Format
-```
-## <topic>
-- Claim. (Source: episode <id>, <date>.)
-```
-
-## User
-_(empty — populated as the agent learns)_
-
-## Infrastructure
-_(empty — populated as the agent learns)_
-
-## Codebase
-_(empty — populated as the agent learns)_
-EOF
-  log "seeded $VOLUME_DIR/MEMORY.md"
-fi
-
-if [[ ! -f "$VOLUME_DIR/USER.md" ]]; then
-  cat > "$VOLUME_DIR/USER.md" <<'EOF'
-# USER.md — User Model
-
-Dialectic user model (Honcho-style if enabled, otherwise hand-curated).
-What the agent has inferred about the user's preferences, working style,
-and goals. Distinct from MEMORY.md: claims here are *about the user*
-specifically.
-
-_(empty — populated as the agent learns)_
-EOF
-  log "seeded $VOLUME_DIR/USER.md"
-fi
-
-if [[ ! -f "$VOLUME_DIR/PEERS.md" ]]; then
-  cat > "$VOLUME_DIR/PEERS.md" <<'EOF'
-# PEERS.md — Peer Agent Model
-
-Semantic memory (CoALA §4.1, §4.5) for other agents the system shares
-work with. Parallel to USER.md but for non-human collaborators. See
-AGENTS.md §6.
-
-Claims here are about specific peers: their identity, declared
-capabilities, observed behavior, trust level, and which channels they
-monitor. Updated by direct user instruction, by the `coala-reflection`
-skill, and by the `group-agent-coordination` skill when a cycle
-produces a durable fact about a peer.
-
-Registered peers in `hermes.toml [[peers.peer]]` are the *declaration*;
-this file is the *experience-grounded* model. They drift apart over time
-— that's expected. Reconcile during reflection.
-
-## Format
-```
-## <peer-id>
-- Declared capabilities: ...
-- Observed behavior: ...
-- Trust: untrusted | scoped | trusted
-- Channels: <ids of channels where this peer is active>
-- Notable episodes: <episode refs or dates>
-```
-
-_(empty — populated as the agent collaborates)_
-EOF
-  log "seeded $VOLUME_DIR/PEERS.md"
+# persistent volume. Main-home only (fleet agents bring their own creds
+# via the adapter's per-agent env).
+if [[ ! -f "$HERMES_DIR/auth.json" ]] && [[ -n "${HERMES_AUTH_JSON_BOOTSTRAP:-}" ]]; then
+  printf '%s' "$HERMES_AUTH_JSON_BOOTSTRAP" > "$HERMES_DIR/auth.json"
+  chmod 600 "$HERMES_DIR/auth.json"
+  log "bootstrapped $HERMES_DIR/auth.json from HERMES_AUTH_JSON_BOOTSTRAP"
 fi
 
 # ----------------------------------------------------------------------------
-# 3. Seed bundled skills into volume (so they survive even if /app changes)
+# 3. Alias ~/.hermes → the main home (main agent only)
 # ----------------------------------------------------------------------------
-# We seed by COPY, not symlink, into the volume — so agent-authored patches
-# to seed skills are preserved across rebuilds. The git-tracked originals
-# in /app/hermes-config/skills/ remain as the canonical source of truth;
-# the bootstrap below honors "volume wins" on conflict (agent edits stick).
-#
-# To force re-seeding from /app (overwriting volume copies), set
-# HERMES_FORCE_RESEED=1 in Railway env.
-SEED_SKILLS=(coala-decision-cycle coala-skill-induction coala-reflection
-             deploy-railway debug-incident write-quality-code
-             group-agent-coordination github-projects-ops channel-aware-messaging)
-
-for skill in "${SEED_SKILLS[@]}"; do
-  src="$CONFIG_DIR/skills/$skill"
-  dst="$VOLUME_DIR/skills/$skill"
-
-  if [[ ! -d "$src" ]]; then
-    log "WARN: seed skill missing in config: $skill"
-    continue
-  fi
-
-  if [[ ! -d "$dst" ]] || [[ "${HERMES_FORCE_RESEED:-0}" == "1" ]]; then
-    rm -rf "$dst"
-    cp -r "$src" "$dst"
-    log "seeded skill: $skill"
-  fi
-done
-
-# ----------------------------------------------------------------------------
-# 4. Wire HERMES_HOME (the volume) and the ~/.hermes alias
-# ----------------------------------------------------------------------------
-# All mutable state (state.db, .env, config.yaml, sessions/, logs/, skills/,
-# …) is written by hermes/admin *directly* into HERMES_HOME = the volume, so
-# there is nothing to symlink for state — it's already persistent. We only
-# wire in the read-only, git-tracked architecture.
-mkdir -p "$HERMES_DIR"
-
-# Architecture files: symlink to git-tracked sources (always current).
-ln -sfn "$CONFIG_DIR/AGENTS.md"   "$HERMES_DIR/AGENTS.md"
-ln -sfn "$CONFIG_DIR/SOUL.md"     "$HERMES_DIR/SOUL.md"
-ln -sfn "$CONFIG_DIR/hermes.toml" "$HERMES_DIR/hermes.toml"
-ln -sfn "$CONFIG_DIR/mcp.json"    "$HERMES_DIR/mcp.json"
-
-# Alias ~/.hermes → the volume. hermes/admin use $HERMES_HOME explicitly, but
-# several skill docs and any code path that hardcodes ~/.hermes/... should
-# still resolve onto the volume. Skip when HOME already *is* the volume home
-# (i.e. HERMES_HOME=~/.hermes) to avoid a self-referential link.
+# hermes/admin use $HERMES_HOME explicitly, but several skill docs and any code
+# path that hardcodes ~/.hermes/... should still resolve onto the volume. Fleet
+# agents get their OWN ~/.hermes via $HOME inside hermes-fleet-entry.sh, so this
+# global alias belongs to the main agent only. Skip when HOME already *is* the
+# home (HERMES_HOME=~/.hermes) to avoid a self-referential link.
 HOME_HERMES="${HOME:-/root}/.hermes"
 if [[ "$HOME_HERMES" != "$HERMES_DIR" ]]; then
   # Safe to clobber: pre-exec in a fresh container, the real state lives on
@@ -296,14 +158,19 @@ log "bootstrap complete."
 # forwards SIGTERM to the whole group for clean shutdown.
 #
 # Bind :: — Railway private networking is IPv6; :: is dual-stack on Linux, and
-# you can't bind :: and 0.0.0.0 at once. The spawned `hermes` inherits this
-# process's HERMES_HOME by default; per-agent home isolation comes from the
-# adapter's env override (slice #11).
+# you can't bind :: and 0.0.0.0 at once.
+#
+# HERMES_CMD points the runner at our fleet wrapper (hermes-fleet-entry.sh)
+# instead of `hermes` directly, so every /run lazily provisions a per-agent home
+# from the adapter's HERMES_HOME=/data/hermes/agents/<agentId> and isolates that
+# agent's ~/.hermes before exec'ing hermes (slice #11). An externally-set
+# HERMES_CMD still wins.
 if [[ -n "${RUNNER_AUTH_TOKEN:-}" ]]; then
   if [[ -f /opt/paperclip-runner/runner/server.py ]]; then
+    HERMES_CMD="${HERMES_CMD:-/app/hermes-fleet-entry.sh}" \
     RUNNER_HOST="${RUNNER_HOST:-::}" RUNNER_PORT="${RUNNER_PORT:-8788}" \
       python /opt/paperclip-runner/runner/server.py &
-    log "started paperclip runner (pid $!) on [${RUNNER_HOST:-::}]:${RUNNER_PORT:-8788}"
+    log "started paperclip runner (pid $!) on [${RUNNER_HOST:-::}]:${RUNNER_PORT:-8788} (HERMES_CMD=${HERMES_CMD:-/app/hermes-fleet-entry.sh})"
   else
     log "WARN: RUNNER_AUTH_TOKEN set but /opt/paperclip-runner/runner/server.py missing — runner not started"
   fi
