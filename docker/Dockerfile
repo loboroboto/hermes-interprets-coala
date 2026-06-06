@@ -127,6 +127,23 @@ RUN git clone https://github.com/praveen-ks-2001/hermes-agent-template.git /opt/
     rm -rf .git && \
     uv pip install --system --no-cache -r requirements.txt
 
+# Which paperclip-hermes-gateway revision to install. Provides the runner
+# (runner/server.py) — a tiny aiohttp server that exposes the hermes_remote
+# endpoint Paperclip calls to spawn `hermes` over Railway's private network
+# (fleet epic #8, slice #10). GET /health (unauth) + POST /run (Bearer
+# RUNNER_AUTH_TOKEN). bootstrap.sh background-launches it on boot.
+#
+# No release tags upstream → pinned to a SHA for reproducible rebuilds, same
+# as HERMES_ADMIN_REF. To bump, check
+# https://github.com/ecologic-automate/paperclip-hermes-gateway/commits/main
+# and replace the SHA below. Consumed unmodified — this is NOT a fork.
+ARG PAPERCLIP_GATEWAY_REF=3604960acbc4b00d2cfd01bbabe056fbb252405f
+RUN git clone https://github.com/ecologic-automate/paperclip-hermes-gateway.git /opt/paperclip-runner && \
+    cd /opt/paperclip-runner && \
+    git checkout ${PAPERCLIP_GATEWAY_REF} && \
+    rm -rf .git && \
+    uv pip install --system --no-cache 'aiohttp>=3.9'
+
 # Points hermes at our pre-built TUI bundle. hermes's _make_tui_argv
 # checks HERMES_TUI_DIR first: if dist/entry.js exists there, it skips
 # the npm install/build entirely. Pre-building at image time avoids the

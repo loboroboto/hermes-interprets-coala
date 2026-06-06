@@ -285,6 +285,33 @@ fi
 log "bootstrap complete."
 
 # ----------------------------------------------------------------------------
+# 5b. Fleet (#8/#10): paperclip-hermes-gateway runner
+# ----------------------------------------------------------------------------
+# Exposes the hermes_remote endpoint Paperclip calls to spawn `hermes` over the
+# Railway private network (GET /health, POST /run with Bearer RUNNER_AUTH_TOKEN).
+# Gated on RUNNER_AUTH_TOKEN so the image still boots normally when the fleet
+# isn't enabled (the runner exits 1 without a token). We background it and let
+# it inherit stdout/stderr so its banner + run logs show up in `railway logs`;
+# when we exec the CMD below the runner reparents to tini (PID 1), and `tini -g`
+# forwards SIGTERM to the whole group for clean shutdown.
+#
+# Bind :: — Railway private networking is IPv6; :: is dual-stack on Linux, and
+# you can't bind :: and 0.0.0.0 at once. The spawned `hermes` inherits this
+# process's HERMES_HOME by default; per-agent home isolation comes from the
+# adapter's env override (slice #11).
+if [[ -n "${RUNNER_AUTH_TOKEN:-}" ]]; then
+  if [[ -f /opt/paperclip-runner/runner/server.py ]]; then
+    RUNNER_HOST="${RUNNER_HOST:-::}" RUNNER_PORT="${RUNNER_PORT:-8788}" \
+      python /opt/paperclip-runner/runner/server.py &
+    log "started paperclip runner (pid $!) on [${RUNNER_HOST:-::}]:${RUNNER_PORT:-8788}"
+  else
+    log "WARN: RUNNER_AUTH_TOKEN set but /opt/paperclip-runner/runner/server.py missing — runner not started"
+  fi
+else
+  log "paperclip runner disabled (RUNNER_AUTH_TOKEN unset)"
+fi
+
+# ----------------------------------------------------------------------------
 # 6. Hand off to the actual command
 # ----------------------------------------------------------------------------
 # cd into the admin template dir so Jinja2's FileSystemLoader("templates")
