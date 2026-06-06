@@ -58,6 +58,17 @@ restartPolicyMaxRetries = 10
 #   SENTRY_AUTH_TOKEN         — Sentry MCP for incident debugging
 #   PAPERCLIP_AI_TOKEN        — paperclip_ai peer-agent platform (stub)
 #   MULTICA_TOKEN             — multica peer-agent swarm (stub)
+#   RUNNER_AUTH_TOKEN         — enables the paperclip-hermes-gateway runner
+#                               (fleet epic #8). When set, bootstrap launches
+#                               the runner so Paperclip's hermes_remote adapter
+#                               can reach this service privately at
+#                               hermes-interprets-coala.railway.internal:8788
+#                               (Bearer = this token). No public domain / TCP
+#                               proxy needed — private networking only. Leave
+#                               unset to keep the runner off.
+#   RUNNER_HOST              — runner bind address; default "::" (Railway
+#                               private networking is IPv6). Rarely overridden.
+#   RUNNER_PORT             — runner port; default 8788.
 #   HERMES_AUTH_JSON_BOOTSTRAP — JSON contents of a locally-generated
 #                               ~/.hermes/auth.json, written to the volume
 #                               on first boot. Use for OAuth-based providers
