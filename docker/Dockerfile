@@ -155,9 +155,14 @@ ENV HERMES_TUI_DIR=/opt/hermes-agent/ui-tui
 WORKDIR /app
 COPY hermes-config /app/hermes-config
 
-# Copy bootstrap and make executable.
+# Copy bootstrap + fleet helpers and make executable. seed-hermes-home.sh is the
+# shared idempotent home-provisioner; hermes-fleet-entry.sh is the runner's
+# HERMES_CMD wrapper that seeds + isolates a per-agent home before exec'ing
+# hermes (fleet epic #8, slice #11).
 COPY scripts/bootstrap.sh /app/bootstrap.sh
-RUN chmod +x /app/bootstrap.sh
+COPY scripts/seed-hermes-home.sh /app/seed-hermes-home.sh
+COPY scripts/hermes-fleet-entry.sh /app/hermes-fleet-entry.sh
+RUN chmod +x /app/bootstrap.sh /app/seed-hermes-home.sh /app/hermes-fleet-entry.sh
 
 # The /data mount comes from the Railway volume at runtime; don't VOLUME
 # it here (Railway manages the mount itself). For local `docker run`, pass
