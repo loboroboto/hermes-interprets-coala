@@ -10,9 +10,8 @@
 # What it does, all on the durable /paperclip volume so it survives redeploys:
 #   1. downloads + extracts the pinned gateway adapter (node https → tar)
 #   2. installs its one runtime dep (@paperclipai/adapter-utils, from npm)
-#   3. writes the paperclip-hermes-remote-shim package (mirrors
-#      fleet/paperclip-adapter-shim/) and vendors the gateway adapter into its
-#      node_modules
+#   3. writes the paperclip-hermes-remote-shim package (defined inline below)
+#      and vendors the gateway adapter into its node_modules
 #   4. load-verifies the shim exactly as Paperclip's loader will
 #   5. registers it in /paperclip/adapter-plugins.json (the external-adapter store
 #      Paperclip's init pass reads on startup)
@@ -21,7 +20,8 @@
 # WHY a shim: the published gateway adapter exports raw functions meant to be
 # hand-patched into Paperclip's built-in registry (a fork). Paperclip's no-fork
 # external system instead loads a package whose createServerAdapter() returns the
-# adapter module — so this shim bridges the two. See fleet/paperclip-adapter-shim/README.md.
+# adapter module — so this shim bridges the two. The shim source is defined inline
+# in this script (step 3); this script is its single source of truth.
 #
 # Idempotent: safe to re-run (rebuilds the staged dir, upserts the store record).
 set -euo pipefail
@@ -71,7 +71,7 @@ GW_ADAPTER="$SRC_DIR/gw/adapter"
 ( cd "$GW_ADAPTER" && npm install --omit=dev --ignore-scripts --no-audit --no-fund >/dev/null 2>&1 )
 log "gateway adapter staged + dependency installed"
 
-# 3. write the shim package (KEEP IN SYNC with fleet/paperclip-adapter-shim/)
+# 3. write the shim package (defined inline here — this script is the single source)
 cat > "$SHIM_DIR/package.json" <<'PKGEOF'
 {
   "name": "paperclip-hermes-remote-shim",
@@ -84,7 +84,7 @@ cat > "$SHIM_DIR/package.json" <<'PKGEOF'
 }
 PKGEOF
 cat > "$SHIM_DIR/index.js" <<'IDXEOF'
-// paperclip-hermes-remote-shim — no-fork bridge. Mirrors fleet/paperclip-adapter-shim/index.js.
+// paperclip-hermes-remote-shim — no-fork bridge (createServerAdapter wrapper).
 // Wraps the gateway adapter's raw exports in createServerAdapter() so Paperclip's
 // external-adapter system loads it with zero Paperclip source edits. Object fields
 // mirror the gateway README's known-good register object.

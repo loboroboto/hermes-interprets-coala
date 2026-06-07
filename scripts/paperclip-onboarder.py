@@ -184,9 +184,8 @@ def build_desired(defaults: dict[str, Any], agent: dict[str, Any],
         "persistSession": merged.get("persistSession", True),
         "timeoutSec": merged.get("timeoutSec", 600),
     }
-    hermes_home = merged.get("hermesHome")
-    if hermes_home:
-        adapter_config["env"] = {"HERMES_HOME": hermes_home}
+    # (No hermesHome → adapterConfig.env: Paperclip wraps env values inertly and the
+    # per-agent home is derived from PAPERCLIP_AGENT_ID by hermes-fleet-entry.sh, #29.)
 
     # Model: the adapter passes adapterConfig.model to `hermes chat` as --model,
     # which overrides the per-agent ~/.hermes/config.yaml default (seeded from

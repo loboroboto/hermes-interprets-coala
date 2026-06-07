@@ -136,34 +136,9 @@ peers_md = "/data/hermes/PEERS.md"
 #   - none:       known to exist but currently unreachable (stub)
 # trust    ∈ {untrusted, scoped, trusted}
 
-# --- Example stubs. Uncomment + edit to register real peers. ---
-
-# [[peers.peer]]
-# id = "github-review-bot"
-# display_name = "GitHub Review Bot"
-# transport = "shared-doc"
-# transport_ref = "github"          # the mcp.json key, even though kind=shared-doc
-# capabilities = ["code-review", "ci-status"]
-# trust = "scoped"
-# notes = "Posts review comments on PRs. Read-only collaborator from our POV."
-
-# [[peers.peer]]
-# id = "paperclip-ai"
-# display_name = "paperclip_ai coordinator"
-# transport = "mcp"
-# transport_ref = "paperclip_ai"    # match mcp.json key
-# capabilities = ["task-routing", "agent-discovery"]
-# trust = "scoped"
-# notes = "Group-agent coordination platform. Stub — fill in mcp.json first."
-
-# [[peers.peer]]
-# id = "multica-swarm"
-# display_name = "multica peer swarm"
-# transport = "mcp"
-# transport_ref = "multica"
-# capabilities = ["parallel-execution", "consensus"]
-# trust = "scoped"
-# notes = "Multi-agent swarm. Stub."
+# No peers registered yet. To add one, append a [[peers.peer]] block with the
+# fields above (id, display_name, transport, transport_ref, capabilities, trust,
+# notes); see AGENTS.md §6.1. (Prior github/paperclip/multica examples are in git history.)
 
 [channels]
 # Pointer to a human-readable channel registry the agent can read for
@@ -221,23 +196,9 @@ visibility = "private"
 transport_ref = "paperclip"   # delivered as the run reply; no separate transport wired
 etiquette = "terse,one-question,await-go-ahead"
 
-# --- Stubs: uncomment when wiring real transports ---
-
-# [[channels.channel]]
-# id = "paperclip-coord"
-# kind = "peer-agent"
-# direction = "sync"
-# visibility = "private"
-# transport_ref = "paperclip_ai"
-# etiquette = "terse,claim-on-entry"
-
-# [[channels.channel]]
-# id = "multica-broadcast"
-# kind = "broadcast"
-# direction = "async"
-# visibility = "public"
-# transport_ref = "multica"
-# etiquette = "structured,one-decision-per-message"
+# To add a non-GitHub channel, append a [[channels.channel]] block with
+# kind/direction/visibility/transport_ref/etiquette (see AGENTS.md §6.2).
+# (Prior paperclip/multica examples are in git history.)
 
 [messaging]
 # Runtime gateway plumbing for human-facing DM bots. Distinct from
