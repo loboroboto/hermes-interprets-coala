@@ -23,15 +23,14 @@ defaults:
   heartbeat: { enabled: true, intervalSec: 300 }   # -> runtimeConfig.heartbeat
 
 companies:
-  - id: cf698121-875b-45b1-b6e3-3832b8a9af51   # LOB — the first company
+  - id: cf698121-875b-45b1-b6e3-3832b8a9af51   # LOB — the first company (asserted against the key's companyId when the CEO is resolved)
     ceo: true                                  # first-company marker; its role:ceo agent is gated behind the human handshake (#20)
-    resolveCeoFromKey: true                    # bootstrap: a role:ceo agent with no existingId is resolved from the CEO key (GET /api/agents/me). For a FRESH deploy, drop the pinned `id` above + `existingId` below and the onboarder bootstraps the CEO from the key alone — no hardcoded ids. existingId, when present, always wins.
+    resolveCeoFromKey: true                    # the role:ceo agent below has NO existingId → its id is resolved from the CEO key (GET /api/agents/me → the key-owner CEO). No hardcoded agent id. To pin a specific agent instead, add `existingId: <uuid>` (it overrides resolution).
     agents:
       - name: hermes
-        existingId: 4c4080c6-8e95-4637-9b3e-45df1b3a0d15   # the live CEO agent to onboard (process -> hermes_remote). PIN for THIS instance; overrides resolveCeoFromKey. Remove it (and the company `id`) to onboard the key-owner CEO instead / on a fresh instance.
-        role: ceo
-        hermesHome: /data/hermes/agents/4c4080c6-8e95-4637-9b3e-45df1b3a0d15   # optional override -> adapterConfig.env.HERMES_HOME. Authoritative source is PAPERCLIP_AGENT_ID, which hermes-fleet-entry.sh derives the home from (#11); Paperclip does not reliably persist adapterConfig.env, so this is belt-and-suspenders.
-        # optional per-agent fields: model, skills, budgetMonthlyCents
+        role: ceo                              # resolved from the CEO key (the company's actual CEO, ade71ee0… on this instance). Was pinned to the role=general agent 4c4080c6 (now migrated away).
+        # home is derived from PAPERCLIP_AGENT_ID by hermes-fleet-entry.sh (#11/#29); Paperclip's adapterConfig.env is wrapped+inert, so no hermesHome is set here.
+        # optional per-agent fields: existingId (pin), model, skills, budgetMonthlyCents
 
       # ---------------------------------------------------------------------------
       # Topology 2 (scale-out) example — one runner service per agent. Uncomment and
