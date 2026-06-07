@@ -71,6 +71,7 @@ mkdir -p "$HOME_DIR" \
          "$HOME_DIR/audio_cache" \
          "$HOME_DIR/workspace" \
          "$HOME_DIR/plans" \
+         "$HOME_DIR/onboarding" \
          "$HOME_DIR/home"
 
 # Seed runtime state files hermes/admin read/write. The admin server expects
@@ -128,6 +129,30 @@ EOF
   log "seeded $HOME_DIR/USER.md"
 fi
 
+# Onboarding gate state (fleet #20). Per-agent flag the human-onboarding-handshake
+# skill reads/writes; lives in THIS home (never USER.md, which is a shared
+# main-home context file) so each fleet agent gates independently. No-clobber: an
+# already-onboarded agent keeps humanOnboarded:true across reseeds. agentId is the
+# fleet home's basename for /data/hermes/agents/<id>; empty for the main home (the
+# skill fills it in on first run).
+if [[ ! -f "$HOME_DIR/onboarding/state.json" ]]; then
+  case "$HOME_DIR" in
+    /data/hermes/agents/*) agent_id="${HOME_DIR##*/}" ;;
+    *)                     agent_id="" ;;
+  esac
+  cat > "$HOME_DIR/onboarding/state.json" <<EOF
+{
+  "humanOnboarded": false,
+  "agentId": "$agent_id",
+  "firstContactAt": null,
+  "onboardedAt": null,
+  "onboardedBy": null,
+  "channel": null
+}
+EOF
+  log "seeded $HOME_DIR/onboarding/state.json (humanOnboarded=false)"
+fi
+
 if [[ ! -f "$HOME_DIR/PEERS.md" ]]; then
   cat > "$HOME_DIR/PEERS.md" <<'EOF'
 # PEERS.md — Peer Agent Model
@@ -169,7 +194,8 @@ fi
 # to overwrite the home's copies from /app.
 SEED_SKILLS=(coala-decision-cycle coala-skill-induction coala-reflection
              deploy-railway debug-incident write-quality-code
-             group-agent-coordination github-projects-ops channel-aware-messaging)
+             group-agent-coordination github-projects-ops channel-aware-messaging
+             human-onboarding-handshake)
 
 for skill in "${SEED_SKILLS[@]}"; do
   src="$CONFIG_DIR/skills/$skill"
