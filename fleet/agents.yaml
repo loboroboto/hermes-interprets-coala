@@ -33,7 +33,7 @@ companies:
     agents:
       - name: hermes
         role: ceo                              # resolved from the CEO key = the company's actual CEO. (existingId, if ever set, overrides resolution.)
-        # home is derived from PAPERCLIP_AGENT_ID by hermes-fleet-entry.sh (#11/#29); Paperclip's adapterConfig.env is wrapped+inert, so no hermesHome is set here.
+        # per-agent home (/data/hermes/agents/<id>) is derived from PAPERCLIP_AGENT_ID by hermes-fleet-entry.sh (#11/#29) — nothing to set here.
         # optional per-agent fields: existingId (pin), model, skills, budgetMonthlyCents
 
       # ---------------------------------------------------------------------------
@@ -43,5 +43,5 @@ companies:
       # ---------------------------------------------------------------------------
       # - name: scout
       #   role: worker
+      #   existingId: <scout-agent-id>   # or rely on creation once #21 lands
       #   remoteRunnerUrl: http://hermes-scout.railway.internal:8788/run   # override: dedicated runner service
-      #   hermesHome: /data/hermes/agents/<scout-agent-id>

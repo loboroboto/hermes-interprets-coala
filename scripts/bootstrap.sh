@@ -61,20 +61,10 @@ HERMES_DIR="${HERMES_HOME:-$VOLUME_DIR}"
 log() { printf '[bootstrap] %s\n' "$*" >&2; }
 
 # ----------------------------------------------------------------------------
-# 1. Verify config dir (this is git-tracked; missing = misbuild)
+# 1. Config dir completeness (AGENTS.md/SOUL.md/hermes.toml/mcp.json, git-tracked;
+#    missing = misbuild) is validated by seed-hermes-home.sh below — same FATAL
+#    checks — so we don't duplicate them here.
 # ----------------------------------------------------------------------------
-if [[ ! -d "$CONFIG_DIR" ]]; then
-  log "FATAL: $CONFIG_DIR not found — Dockerfile didn't copy hermes-config in."
-  exit 1
-fi
-
-for f in AGENTS.md SOUL.md hermes.toml mcp.json; do
-  if [[ ! -f "$CONFIG_DIR/$f" ]]; then
-    log "FATAL: $CONFIG_DIR/$f missing — config is incomplete."
-    exit 1
-  fi
-done
-log "config dir OK: $CONFIG_DIR"
 
 # ----------------------------------------------------------------------------
 # 2. Seed the main hermes home (HERMES_HOME = the volume) + the fleet root

@@ -37,7 +37,6 @@ match 1:1):
 | `remoteRunnerUrl`     | `adapterConfig.remoteRunnerUrl`      | shared runner (Topology 1) or per-agent override (Topology 2) |
 | `runnerAuthTokenEnv`  | `adapterConfig.runnerAuthToken`      | names an **env var**; the onboarder writes its literal VALUE (no `{{}}` templating in Paperclip) |
 | `paperclipApiUrl`     | API base the onboarder calls         | `PATCH /api/agents/{id}` etc., over the IPv6 private net |
-| `hermesHome`          | `adapterConfig.env.HERMES_HOME`      | per-agent CoALA home; the runner's `hermes-fleet-entry.sh` seeds + isolates it (#11) |
 | `persistSession`      | `adapterConfig.persistSession`       | |
 | `timeoutSec`          | `adapterConfig.timeoutSec`           | |
 | `model`               | `adapterConfig.model`                | adapter passes it to `hermes chat --model`; **overrides** the per-agent `~/.hermes/config.yaml` default (seeded from hermes's upstream `cli-config.yaml.example`) |
@@ -74,8 +73,9 @@ The CEO *creating subordinate agents* under itself is slice #21.
 
 - **Topology 1 (default)** — one shared runner service, many isolated per-agent
   homes. Every agent inherits `defaults.remoteRunnerUrl`
-  (`hermes-interprets-coala.railway.internal:8788/run`) and is isolated only by its
-  own `hermesHome` (`/data/hermes/agents/<agentId>`). No runner code needed (#11).
+  (`hermes-interprets-coala.railway.internal:8788/run`) and is isolated by its own
+  per-agent home (`/data/hermes/agents/<agentId>`, derived from `PAPERCLIP_AGENT_ID`
+  by `hermes-fleet-entry.sh`, #11/#29). No runner code needed.
 - **Topology 2 (scale-out)** — one runner service per agent. An agent sets its own
   `remoteRunnerUrl`; the onboarder treats it as a distinct runner. See the
   commented `scout` example in `agents.yaml`.
